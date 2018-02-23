@@ -61,29 +61,33 @@ def fused_prox_jv_fast(y_hat, dout):
 
 class FusedProxFunction(_BaseBatchProjection):
 
-    def __init__(self, alpha=1):
+    def __init__(self, gpu=False, alpha=1):
         self.alpha = alpha
+        self.gpu = gpu
 
     def project(self, x):
-        x_np = x.numpy().copy()
+        x_np = x.cpu().numpy().copy() if self.gpu else x.numpy().copy()
         prox_tv1d(x_np, self.alpha)  # requires lightning/master for 32bit
         y_hat = torch.from_numpy(x_np)
         return y_hat
 
     def project_jv(self, dout, y_hat):
         dout = dout.clone()
-        _inplace_fused_prox_jv(y_hat.numpy(), dout.numpy())
+        y_hat_np = y_hat.cpu().numpy() if self.gpu else y_hat.numpy()
+        dout_np = dout.cpu().numpy() if self.gpu else dout.numpy()
+        _inplace_fused_prox_jv(y_hat_np, dout_np)
         return dout
 
 
 class Fusedmax(nn.Module):
-    def __init__(self, alpha=1):
+    def __init__(self, gpu=False, alpha=1):
         self.alpha = alpha
+        self.gpu = gpu
         super(Fusedmax, self).__init__()
 
     def forward(self, x, lengths=None):
-        fused_prox = FusedProxFunction(self.alpha)
-        sparsemax = SparsemaxFunction()
+        fused_prox = FusedProxFunction(self.alpha, self.gpu)
+        sparsemax = SparsemaxFunction(self.gpu)
         return sparsemax(fused_prox(x, lengths), lengths)
 
 

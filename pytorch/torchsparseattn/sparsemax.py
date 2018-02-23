@@ -14,10 +14,10 @@ from torch import nn
 from .base import _BaseBatchProjection
 
 
-def project_simplex(v, z=1):
+def project_simplex(v, z=1, gpu=False):
     v_sorted, _ = torch.sort(v, dim=0, descending=True)
     cssv = torch.cumsum(v_sorted, dim=0) - z
-    ind = torch.arange(1, 1 + len(v))
+    ind = torch.arange(1, 1 + len(v)).cuda() if gpu else torch.arange(1, 1 + len(v))
     cond = v_sorted - cssv / ind > 0
     rho = ind.masked_select(cond)[-1]
     tau = cssv.masked_select(cond)[-1] / rho
@@ -36,8 +36,11 @@ def sparsemax_grad(dout, w_star):
 
 class SparsemaxFunction(_BaseBatchProjection):
 
+    def __init__(self, gpu=False):
+        self.gpu = gpu
+
     def project(self, x):
-        return project_simplex(x)
+        return project_simplex(x, gpu=self.gpu)
 
     def project_jv(self, dout, y_star):
         return sparsemax_grad(dout, y_star)
@@ -45,7 +48,11 @@ class SparsemaxFunction(_BaseBatchProjection):
 
 class Sparsemax(nn.Module):
 
+    def __init__(self, gpu=False):
+        self.gpu = gpu
+        super(Sparsemax, self).__init__()
+
     def forward(self, x, lengths=None):
-        sparsemax = SparsemaxFunction()
+        sparsemax = SparsemaxFunction(self.gpu)
         return sparsemax(x, lengths)
 
